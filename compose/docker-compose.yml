@@ -8,6 +8,8 @@ volumes:
   pgdata:
   opdata:
 
+  
+
 x-op-restart-policy: &restart_policy
   restart: unless-stopped
 x-op-image: &image
@@ -30,6 +32,28 @@ x-op-app: &app
     - "${OPDATA:-opdata}:/var/openproject/assets"
 
 services:
+  traefik:
+    image: traefik:v2.5
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      - "--certificatesresolvers.myresolver.acme.email=${EMAIL}"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./letsencrypt:/letsencrypt"
+    depends_on:
+      - proxy
+    networks:
+      - frontend
+    labels:
+      - "traefik.enable=true"
+  
   db:
     image: postgres:13
     <<: *restart_policy
@@ -60,6 +84,10 @@ services:
       - web
     networks:
       - frontend
+    labels:
+      - "traefik.http.routers.web.rule=Host(`${URL}`)"
+      - "traefik.http.routers.web.entrypoints=websecure"
+      - "traefik.http.routers.web.tls.certresolver=myresolver"
 
   web:
     <<: *app
